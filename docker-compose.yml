@@ -1,0 +1,21 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: swooshpay_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: swooshpay
+      POSTGRES_USER: swooshpay
+      POSTGRES_PASSWORD: swooshpay
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U swooshpay']
+      interval: 10s
+      retries: 5
+      start_period: 5s
+      timeout: 5s

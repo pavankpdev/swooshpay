@@ -26,12 +26,14 @@
     "@swc/helpers": "~0.5.11",
     "@types/jest": "^30.0.0",
     "@types/node": "20.19.9",
+    "dbmate": "^2.28.0",
     "eslint": "^9.8.0",
     "eslint-config-prettier": "^10.0.0",
     "husky": "^9.1.7",
     "jest": "^30.0.2",
     "jest-environment-node": "^30.0.2",
     "jest-util": "^30.0.2",
+    "kysely-codegen": "^0.18.5",
     "lint-staged": "^16.1.5",
     "nx": "21.4.1",
     "prettier": "^2.6.2",
@@ -47,6 +49,8 @@
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
     "axios": "^1.6.0",
+    "kysely": "^0.28.5",
+    "pg": "^8.16.3",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.0"
   }
