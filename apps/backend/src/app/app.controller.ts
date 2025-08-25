@@ -1,12 +1,15 @@
 import { Controller, Get } from '@nestjs/common';
-import { CurrentUser } from '../utils/current-user';
+import { Public } from '../utils/is-public.decorator';
+import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 
+@ApiTags('Root')
 @Controller()
 export class AppController {
-  @Get()
-  getData(@CurrentUser() userId: string) {
-    return {
-      userId,
-    };
+  @Public()
+  @Get('/health')
+  @ApiOkResponse({ description: 'All Good!' })
+  @ApiOkResponse({ description: 'Something went wrong' })
+  getData() {
+    return 'All Good!';
   }
 }

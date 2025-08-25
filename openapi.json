@@ -1,0 +1,66 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "getData",
+        "parameters": [],
+        "responses": {
+          "200": { "description": "All Good!" },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden" },
+          "500": { "description": "Internal Server Error" }
+        },
+        "tags": ["Root"]
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginDto" }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "" },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden" },
+          "500": { "description": "Internal Server Error" }
+        },
+        "tags": ["Auth"]
+      }
+    }
+  },
+  "info": {
+    "title": "Swoosh Pay Internal REST API",
+    "description": "A plug-and-play checkout solution for SaaS/eCommerce apps offering address, coupon, payment, and analytics tools.",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [
+    { "name": "docs", "description": "" },
+    { "name": "internal", "description": "" }
+  ],
+  "servers": [
+    { "url": "https://api.swooshpay.com", "description": "Production server" },
+    { "url": "https://staging.swooshpay.com", "description": "Staging server" },
+    { "url": "http://localhost:3000", "description": "Local dev" }
+  ],
+  "components": {
+    "schemas": {
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "username": { "type": "string" },
+          "password": { "type": "string" }
+        },
+        "required": ["username", "password"]
+      }
+    }
+  }
+}
