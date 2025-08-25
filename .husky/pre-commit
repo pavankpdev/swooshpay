@@ -1,0 +1,7 @@
+# bail out if nothing is staged (avoids running on merge commits with no changes)
+if ! git diff --cached --quiet; then
+  echo "🔎 Running lint-staged..."
+  npx lint-staged
+else
+  echo "No staged changes; skipping lint-staged."
+fi
