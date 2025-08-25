@@ -1,12 +1,12 @@
 import { Controller, Get } from '@nestjs/common';
-import { AppService } from './app.service';
+import { CurrentUser } from '../utils/current-user';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
-
   @Get()
-  getData() {
-    return this.appService.getData();
+  getData(@CurrentUser() userId: string) {
+    return {
+      userId,
+    };
   }
 }
