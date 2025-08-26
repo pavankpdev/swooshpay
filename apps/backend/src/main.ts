@@ -26,8 +26,6 @@ async function bootstrap() {
     .setVersion('1.0')
     .addTag('docs')
     .addTag('internal')
-    .addServer('https://api.swooshpay.com', 'Production server')
-    .addServer('https://staging.swooshpay.com', 'Staging server')
     .addServer('http://localhost:3000', 'Local dev')
     .addGlobalResponse({
       status: 500,

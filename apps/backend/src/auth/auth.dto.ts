@@ -7,3 +7,17 @@ export class LoginDto {
   @ApiProperty()
   password!: string;
 }
+
+export class RegisterDto {
+  @ApiProperty()
+  username!: string;
+
+  @ApiProperty()
+  fullname!: string;
+
+  @ApiProperty()
+  email!: string;
+
+  @ApiProperty()
+  password!: string;
+}
