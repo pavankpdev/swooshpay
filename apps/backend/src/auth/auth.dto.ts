@@ -21,3 +21,8 @@ export class RegisterDto {
   @ApiProperty()
   password!: string;
 }
+
+export class ConfirmUserDto {
+  @ApiProperty()
+  otp!: string;
+}

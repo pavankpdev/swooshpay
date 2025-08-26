@@ -39,6 +39,16 @@ async function bootstrap() {
       status: 403,
       description: 'Forbidden',
     })
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        in: 'header',
+        description: 'Paste your access token here',
+      },
+      'jwt'
+    )
     .build();
 
   const options: SwaggerDocumentOptions = {

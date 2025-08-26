@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  GoneException,
   HttpException,
   Injectable,
   InternalServerErrorException,
@@ -13,11 +14,12 @@ import { DatabaseError } from 'pg';
 import { NotificationService } from '../notification/notification.service';
 import { comparePassword, createHash } from '../utils/crypto';
 import { db } from '../db/connection';
-import { ValueExpression } from 'kysely';
+import { sql, ValueExpression } from 'kysely';
 import { DB, OtpPurpose } from '../db/generated/db';
 
 @Injectable()
 export class AuthService {
+  private readonly MAX_ATTEMPTS = 3;
   constructor(
     private readonly usersService: UsersService,
     private readonly notificationService: NotificationService,
@@ -55,7 +57,11 @@ export class AuthService {
           OTP
       );
       return {
-        data: 'Registered successfully, please check your email for the confirmation code',
+        data: {
+          message:
+            'Registered successfully, please check your email for the confirmation code',
+          accessToken: this.jwtService.sign({ sub: u.id }),
+        },
       };
     } catch (error: unknown) {
       if (error instanceof DatabaseError) {
@@ -78,6 +84,75 @@ export class AuthService {
     }
   }
 
+  async verifyOTP(userId: string, code: string, purpose: OtpPurpose) {
+    try {
+      const codeHash = createHash(code);
+      const consumed = await db
+        .updateTable('otps')
+        .set(() => ({
+          consumed_at: sql`NOW()`,
+        }))
+        .where('user_id', '=', userId)
+        .where('purpose', '=', purpose)
+        .where('consumed_at', 'is', null)
+        .where('expires_at', '>', new Date())
+        .where('attempts', '<', this.MAX_ATTEMPTS)
+        .where('code_hash', '=', codeHash)
+        .returning(['id'])
+        .executeTakeFirst();
+
+      if (consumed) {
+        return true;
+      }
+
+      const bumped = await db
+        .updateTable('otps')
+        .set((eb) => ({
+          attempts: eb('attempts', '+', 1),
+        }))
+        .where('user_id', '=', userId)
+        .where('purpose', '=', purpose)
+        .where('consumed_at', 'is', null)
+        .where('expires_at', '>', new Date())
+        .where('attempts', '<', this.MAX_ATTEMPTS)
+        .where('code_hash', '=', codeHash)
+        .returning(['attempts'])
+        .executeTakeFirst();
+
+      if (!bumped) {
+        // No active OTP (expired or already used)
+        throw new GoneException('OTP expired or already used');
+      }
+
+      if (bumped.attempts >= this.MAX_ATTEMPTS) {
+        throw new HttpException(
+          'Too many invalid attempts. Please request a new code.',
+          429
+        );
+      }
+
+      throw new BadRequestException('Invalid OTP code');
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+
+      if (err instanceof DatabaseError) {
+        // FOR INTERAL ERRORS
+        console.log(
+          { code: err.code, detail: err.detail },
+          'OTP verify DB error'
+        );
+      }
+
+      throw new InternalServerErrorException(
+        'Could not verify code, please try again.'
+      );
+    }
+  }
+
+  async confirmUser(userId: string) {
+    return this.usersService.updateOne(userId, { is_confirmed: true });
+  }
+
   private async generateOTP(
     userId: string,
     purpose: ValueExpression<DB, 'otps', OtpPurpose>
@@ -85,14 +160,26 @@ export class AuthService {
     const code = this.generateUniqueDigitCode();
     const codeHash = createHash(code);
 
-    await db.insertInto('otps').values({
-      user_id: userId,
-      purpose,
-      code_hash: codeHash,
-      expires_at: new Date(Date.now() + 10 * 60_000),
-      consumed_at: null,
-    });
-
+    await db
+      .insertInto('otps')
+      .values({
+        user_id: userId,
+        purpose,
+        code_hash: codeHash,
+        expires_at: new Date(Date.now() + 10 * 60_000),
+        consumed_at: null,
+      })
+      .onConflict((oc) =>
+        oc
+          .columns(['user_id', 'purpose'])
+          .where('consumed_at', 'is', null)
+          .doUpdateSet({
+            code_hash: codeHash,
+            expires_at: new Date(Date.now() + 10 * 60_000),
+            consumed_at: null,
+            created_at: sql`NOW()`,
+          })
+      );
     return code;
   }
 

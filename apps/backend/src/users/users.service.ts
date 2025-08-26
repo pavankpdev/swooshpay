@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { db } from '../db/connection';
 import { RegisterDto } from '../auth/auth.dto';
 import { hashPassword } from '../utils/crypto';
+import { DB } from '../db/generated/db';
+import { UpdateObjectExpression } from 'node_modules/kysely/dist/cjs/parser/update-set-parser';
 
 @Injectable()
 export class UsersService {
@@ -39,5 +41,18 @@ export class UsersService {
       })
       .returning('id')
       .executeTakeFirst();
+  }
+
+  async updateOne(
+    userId: string,
+    data: UpdateObjectExpression<DB, 'users', 'users'>
+  ) {
+    const u = await db
+      .updateTable('users')
+      .set(data)
+      .where('id', '=', userId)
+      .executeTakeFirst();
+
+    return u.numUpdatedRows;
   }
 }
