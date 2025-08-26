@@ -1,4 +1,5 @@
 COMPOSE=docker compose --env-file .env.local
+DATABASE_URL=postgresql://swooshpay:swooshpay@localhost:5432/swooshpay?sslmode=disable
 
 .PHONY: dev stop logs ps dbconsole reset-db
 
@@ -27,3 +28,12 @@ dbconsole:
 reset-db:
 	$(COMPOSE) down -v
 	$(COMPOSE) up -d
+
+create-migration:
+	pnpm dbmate new $(name)
+
+migration-up:
+	DATABASE_URL="$(DATABASE_URL)" pnpm dbmate up
+
+migration-down:
+	DATABASE_URL="$(DATABASE_URL)" pnpm dbmate down
