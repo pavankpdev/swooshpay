@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { db } from '../db/connection';
 import { RegisterDto } from '../auth/auth.dto';
+import { hashPassword } from '../utils/crypto';
 
 @Injectable()
 export class UsersService {
@@ -25,6 +26,9 @@ export class UsersService {
   }
 
   async createOne(user: RegisterDto) {
+    if (user?.password) {
+      user.password = await hashPassword(user.password);
+    }
     return db
       .insertInto('users')
       .values({

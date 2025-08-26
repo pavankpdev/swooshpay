@@ -1,14 +1,17 @@
 import {
+  BadRequestException,
   ConflictException,
   HttpException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { RegisterDto } from './auth.dto';
 import { DatabaseError } from 'pg';
 import { NotificationService } from '../notification/notification.service';
+import { comparePassword } from '../utils/crypto';
 
 @Injectable()
 export class AuthService {
@@ -19,13 +22,13 @@ export class AuthService {
   ) {}
 
   async validateUser(username: string, password: string) {
-    const user = await this.usersService.findOneByUsername(username);
-    // TODO: check with hashed password
-    if (user && user.password === password) {
-      return user.id;
-    }
+    const u = await this.usersService.findOneByUsername(username);
+    if (!u) throw new NotFoundException('User not found');
 
-    return null;
+    const passwordValid = await comparePassword(password, u.password as string);
+    if (!passwordValid) throw new BadRequestException('Invalid password');
+
+    return u.id;
   }
 
   async authenticate(userId: string) {
