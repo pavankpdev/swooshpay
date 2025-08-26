@@ -9,7 +9,20 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
   ? ColumnType<S, I | undefined, U>
   : ColumnType<T, T | undefined, T>;
 
+export type OtpPurpose = 'reset_password' | 'signup';
+
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
+
+export interface Otps {
+  attempts: Generated<number>;
+  code_hash: Buffer;
+  consumed_at: Timestamp | null;
+  created_at: Generated<Timestamp>;
+  expires_at: Timestamp;
+  id: Generated<string>;
+  purpose: OtpPurpose;
+  user_id: string;
+}
 
 export interface SchemaMigrations {
   version: string;
@@ -20,6 +33,7 @@ export interface Users {
   email: string;
   fullname: string;
   id: Generated<string>;
+  is_confirmed: Generated<boolean | null>;
   is_deleted: Generated<boolean | null>;
   password: string | null;
   updated_at: Generated<Timestamp | null>;
@@ -27,6 +41,7 @@ export interface Users {
 }
 
 export interface DB {
+  otps: Otps;
   schema_migrations: SchemaMigrations;
   users: Users;
 }

@@ -29,11 +29,15 @@ reset-db:
 	$(COMPOSE) down -v
 	$(COMPOSE) up -d
 
+db-codegen:
+	DATABASE_URL="$(DATABASE_URL)" pnpm kysely-codegen --out-file apps/backend/src/db/generated/db.d.ts
+
 create-migration:
 	pnpm dbmate new $(name)
 
 migration-up:
 	DATABASE_URL="$(DATABASE_URL)" pnpm dbmate up
+	$(MAKE) db-codegen
 
 migration-down:
 	DATABASE_URL="$(DATABASE_URL)" pnpm dbmate down

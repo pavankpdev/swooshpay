@@ -11,7 +11,10 @@ import { JwtService } from '@nestjs/jwt';
 import { RegisterDto } from './auth.dto';
 import { DatabaseError } from 'pg';
 import { NotificationService } from '../notification/notification.service';
-import { comparePassword } from '../utils/crypto';
+import { comparePassword, createHash } from '../utils/crypto';
+import { db } from '../db/connection';
+import { ValueExpression } from 'kysely';
+import { DB, OtpPurpose } from '../db/generated/db';
 
 @Injectable()
 export class AuthService {
@@ -44,7 +47,7 @@ export class AuthService {
     try {
       const u = await this.usersService.createOne(user);
       if (!u) throw new HttpException('Something went wrong', 500);
-      const OTP = '123456';
+      const OTP = await this.generateOTP(u.id, 'signup');
       await this.notificationService.sendEmail(
         user.email,
         'Welcome to SwooshPay',
@@ -73,5 +76,40 @@ export class AuthService {
         'Something went wrong while creating account, please try again later'
       );
     }
+  }
+
+  private async generateOTP(
+    userId: string,
+    purpose: ValueExpression<DB, 'otps', OtpPurpose>
+  ) {
+    const code = this.generateUniqueDigitCode();
+    const codeHash = createHash(code);
+
+    await db.insertInto('otps').values({
+      user_id: userId,
+      purpose,
+      code_hash: codeHash,
+      expires_at: new Date(Date.now() + 10 * 60_000),
+      consumed_at: null,
+    });
+
+    return code;
+  }
+
+  private generateUniqueDigitCode(length = 6): string {
+    if (!Number.isInteger(length) || length < 1 || length > 10) {
+      throw new Error(
+        `Invalid OTP length: ${length}. Must be an integer between 1 and 10.`
+      );
+    }
+
+    const digits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    let code = '';
+
+    for (let i = 0; i < length; i++) {
+      code += digits[Math.floor(Math.random() * digits.length)];
+    }
+
+    return code;
   }
 }
