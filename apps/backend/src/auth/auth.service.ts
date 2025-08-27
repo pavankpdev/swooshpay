@@ -133,10 +133,13 @@ export class AuthService {
 
       throw new BadRequestException('Invalid OTP code');
     } catch (err) {
+      console.log(err);
       if (err instanceof HttpException) throw err;
 
       if (err instanceof DatabaseError) {
         // FOR INTERAL ERRORS
+        console.log(err);
+
         console.log(
           { code: err.code, detail: err.detail },
           'OTP verify DB error'
@@ -157,30 +160,37 @@ export class AuthService {
     userId: string,
     purpose: ValueExpression<DB, 'otps', OtpPurpose>
   ) {
-    const code = this.generateUniqueDigitCode();
-    const codeHash = createHash(code);
+    try {
+      console.log(userId, purpose);
 
-    await db
-      .insertInto('otps')
-      .values({
-        user_id: userId,
-        purpose,
-        code_hash: codeHash,
-        expires_at: new Date(Date.now() + 10 * 60_000),
-        consumed_at: null,
-      })
-      .onConflict((oc) =>
-        oc
-          .columns(['user_id', 'purpose'])
-          .where('consumed_at', 'is', null)
-          .doUpdateSet({
-            code_hash: codeHash,
-            expires_at: new Date(Date.now() + 10 * 60_000),
-            consumed_at: null,
-            created_at: sql`NOW()`,
-          })
-      );
-    return code;
+      const code = this.generateUniqueDigitCode();
+      const codeHash = createHash(code);
+
+      await db
+        .insertInto('otps')
+        .values({
+          user_id: userId,
+          purpose,
+          code_hash: codeHash,
+          expires_at: new Date(Date.now() + 10 * 60_000),
+          consumed_at: null,
+        })
+        .onConflict((oc) =>
+          oc
+            .columns(['user_id', 'purpose'])
+            .where('consumed_at', 'is', null)
+            .doUpdateSet({
+              code_hash: codeHash,
+              expires_at: new Date(Date.now() + 10 * 60_000),
+              consumed_at: null,
+              created_at: sql`NOW()`,
+            })
+        )
+        .execute();
+      return code;
+    } catch (error) {
+      console.log(error);
+    }
   }
 
   private generateUniqueDigitCode(length = 6): string {
