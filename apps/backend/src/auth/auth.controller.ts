@@ -12,6 +12,8 @@ import { ConfirmUserDto, LoginDto, RegisterDto } from './auth.dto';
 import { ApiBearerAuth, ApiBody, ApiOkResponse } from '@nestjs/swagger';
 import { Public } from '../utils/is-public.decorator';
 import { VerifyAuthGuard } from './guards/verification-auth.guard';
+import { DecodedOptions } from '../utils/jwt-decoded-decorator';
+import { JWTDecoded } from '../types/common';
 
 @Controller('auth')
 export class AuthController {
@@ -57,11 +59,16 @@ export class AuthController {
   })
   async confirmUser(
     @Body() data: ConfirmUserDto,
-    @CurrentUser() userId: string
+    @DecodedOptions() decoded: JWTDecoded
   ) {
-    const status = await this.authService.verifyOTP(userId, data.otp, 'signup');
-    if (status) {
-      await this.authService.confirmUser(userId);
+    const otpId = await this.authService.verifyOTP(
+      decoded.sub,
+      data.otp,
+      'signup'
+    );
+    if (otpId) {
+      await this.authService.confirmUser(decoded.sub);
+      await this.authService.cleanupVerificationSessions(otpId, decoded.jti);
       return {
         data: {
           message: 'User confirmed successfully',

@@ -18,8 +18,6 @@ export class VerifyJWTStrategy extends PassportStrategy(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async validate(payload: any) {
-    return {
-      userId: payload.sub,
-    };
+    return payload;
   }
 }

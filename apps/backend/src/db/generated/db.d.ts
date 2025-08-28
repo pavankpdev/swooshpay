@@ -40,8 +40,19 @@ export interface Users {
   username: string;
 }
 
+export interface VerificationSessions {
+  attempts: Generated<number>;
+  created_at: Generated<Timestamp>;
+  expires_at: Timestamp;
+  id: Generated<string>;
+  purpose: OtpPurpose;
+  updated_at: Generated<Timestamp>;
+  user_id: string;
+}
+
 export interface DB {
   otps: Otps;
   schema_migrations: SchemaMigrations;
   users: Users;
+  verification_sessions: VerificationSessions;
 }

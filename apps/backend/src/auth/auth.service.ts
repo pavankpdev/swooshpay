@@ -5,6 +5,7 @@ import {
   HttpException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
@@ -14,12 +15,13 @@ import { DatabaseError } from 'pg';
 import { NotificationService } from '../notification/notification.service';
 import { comparePassword, createHash } from '../utils/crypto';
 import { db } from '../db/connection';
-import { sql, ValueExpression } from 'kysely';
-import { DB, OtpPurpose } from '../db/generated/db';
+import { sql } from 'kysely';
+import { OtpPurpose } from '../db/generated/db';
 import { randomUUID } from 'crypto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private readonly MAX_ATTEMPTS = 3;
   constructor(
     private readonly usersService: UsersService,
@@ -55,20 +57,25 @@ export class AuthService {
         user.email,
         'Welcome to SwooshPay',
         'Please confirm your email address to continue by entering the following code: ' +
-          OTP
+          OTP.code
       );
       return {
         data: {
           message:
             'Registered successfully, please check your email for the confirmation code',
           accessToken: this.jwtService.sign(
-            { sub: u.id, scope: ['verify_email'], jti: randomUUID() },
-            { expiresIn: '10m', audience: 'verify', issuer: 'swooshpay' }
+            { sub: u.id, scope: ['verify_email'] },
+            {
+              expiresIn: '10m',
+              audience: 'verify',
+              issuer: 'swooshpay',
+              jwtid: OTP.jti,
+            }
           ),
         },
       };
     } catch (error: unknown) {
-      console.log(error);
+      this.logger.error(error);
 
       if (error instanceof DatabaseError) {
         if (error.code === '23505') {
@@ -108,7 +115,7 @@ export class AuthService {
         .executeTakeFirst();
 
       if (consumed) {
-        return true;
+        return consumed.id;
       }
 
       const bumped = await db
@@ -121,7 +128,6 @@ export class AuthService {
         .where('consumed_at', 'is', null)
         .where('expires_at', '>', new Date())
         .where('attempts', '<', this.MAX_ATTEMPTS)
-        .where('code_hash', '=', codeHash)
         .returning(['attempts'])
         .executeTakeFirst();
 
@@ -139,14 +145,14 @@ export class AuthService {
 
       throw new BadRequestException('Invalid OTP code');
     } catch (err) {
-      console.log(err);
+      this.logger.error(err);
       if (err instanceof HttpException) throw err;
 
       if (err instanceof DatabaseError) {
         // FOR INTERAL ERRORS
-        console.log(err);
+        this.logger.error(err);
 
-        console.log(
+        this.logger.error(
           { code: err.code, detail: err.detail },
           'OTP verify DB error'
         );
@@ -158,44 +164,75 @@ export class AuthService {
     }
   }
 
+  async cleanupVerificationSessions(otpId: string, jwtId: string) {
+    return db.transaction().execute(async (trx) => {
+      await trx.deleteFrom('otps').where('id', '=', otpId).execute();
+
+      await trx
+        .deleteFrom('verification_sessions')
+        .where('id', '=', jwtId)
+        .execute();
+    });
+  }
+
   async confirmUser(userId: string) {
     return this.usersService.updateOne(userId, { is_confirmed: true });
   }
 
   private async generateOTP(
     userId: string,
-    purpose: ValueExpression<DB, 'otps', OtpPurpose>
-  ) {
+    purpose: OtpPurpose
+  ): Promise<{ code: string; jti: string }> {
     try {
-      console.log(userId, purpose);
-
       const code = this.generateUniqueDigitCode();
       const codeHash = createHash(code);
+      const expires_at = new Date(Date.now() + 10 * 60_000);
+      const jti = randomUUID();
 
-      await db
-        .insertInto('otps')
-        .values({
-          user_id: userId,
-          purpose,
-          code_hash: codeHash,
-          expires_at: new Date(Date.now() + 10 * 60_000),
-          consumed_at: null,
-        })
-        .onConflict((oc) =>
-          oc
-            .columns(['user_id', 'purpose'])
-            .where('consumed_at', 'is', null)
-            .doUpdateSet({
-              code_hash: codeHash,
-              expires_at: new Date(Date.now() + 10 * 60_000),
-              consumed_at: null,
-              created_at: sql`NOW()`,
-            })
-        )
-        .execute();
-      return code;
+      await db.transaction().execute(async (trx) => {
+        await trx
+          .insertInto('otps')
+          .values({
+            user_id: userId,
+            purpose,
+            code_hash: codeHash,
+            expires_at,
+            consumed_at: null,
+          })
+          .onConflict((oc) =>
+            oc
+              .columns(['user_id', 'purpose'])
+              .where('consumed_at', 'is', null)
+              .doUpdateSet({
+                code_hash: codeHash,
+                expires_at,
+                consumed_at: null,
+                created_at: sql`NOW()`,
+              })
+          )
+          .execute();
+
+        await trx
+          .insertInto('verification_sessions')
+          .values({
+            id: jti,
+            user_id: userId,
+            purpose,
+            expires_at,
+          })
+          .executeTakeFirst();
+      });
+
+      return {
+        code,
+        jti,
+      };
     } catch (error) {
-      console.log(error);
+      this.logger.error(error);
+      // fallback for unexpected error types
+      throw new InternalServerErrorException(
+        'Something went wrong while creating account, please try again later'
+      );
     }
   }
 
