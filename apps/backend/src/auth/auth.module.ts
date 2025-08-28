@@ -8,6 +8,7 @@ import { env } from '../env';
 import { JwtStrategy } from './strategy/jwt.strategy';
 import { LocalStrategy } from './strategy/local.strategy';
 import { NotificationModule } from '../notification/notification.module';
+import { VerifyJWTStrategy } from './strategy/verification-auth.strategy';
 
 @Module({
   imports: [
@@ -20,7 +21,7 @@ import { NotificationModule } from '../notification/notification.module';
     NotificationModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, LocalStrategy],
+  providers: [AuthService, JwtStrategy, LocalStrategy, VerifyJWTStrategy],
   exports: [AuthService],
 })
 export class AuthModule {}

@@ -11,7 +11,7 @@ import { AuthService } from './auth.service';
 import { ConfirmUserDto, LoginDto, RegisterDto } from './auth.dto';
 import { ApiBearerAuth, ApiBody, ApiOkResponse } from '@nestjs/swagger';
 import { Public } from '../utils/is-public.decorator';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { VerifyAuthGuard } from './guards/verification-auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -43,7 +43,7 @@ export class AuthController {
     return this.authService.register(userData);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(VerifyAuthGuard)
   @Post('confirm')
   @ApiBody({ type: ConfirmUserDto })
   @ApiBearerAuth('jwt')

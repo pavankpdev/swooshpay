@@ -16,6 +16,7 @@ import { comparePassword, createHash } from '../utils/crypto';
 import { db } from '../db/connection';
 import { sql, ValueExpression } from 'kysely';
 import { DB, OtpPurpose } from '../db/generated/db';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class AuthService {
@@ -60,10 +61,15 @@ export class AuthService {
         data: {
           message:
             'Registered successfully, please check your email for the confirmation code',
-          accessToken: this.jwtService.sign({ sub: u.id }),
+          accessToken: this.jwtService.sign(
+            { sub: u.id, scope: ['verify_email'], jti: randomUUID() },
+            { expiresIn: '10m', audience: 'verify', issuer: 'swooshpay' }
+          ),
         },
       };
     } catch (error: unknown) {
+      console.log(error);
+
       if (error instanceof DatabaseError) {
         if (error.code === '23505') {
           const msg = (error.constraint || '').toLowerCase();
