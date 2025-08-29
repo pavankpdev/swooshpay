@@ -45,6 +45,7 @@ export interface VerificationSessions {
   created_at: Generated<Timestamp>;
   expires_at: Timestamp;
   id: Generated<string>;
+  is_consumed: Generated<boolean>;
   purpose: OtpPurpose;
   updated_at: Generated<Timestamp>;
   user_id: string;

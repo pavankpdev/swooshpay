@@ -78,4 +78,19 @@ export class AuthController {
 
     throw new BadRequestException('Invalid OTP code');
   }
+
+  @UseGuards(VerifyAuthGuard)
+  @Post('resend-otp')
+  @ApiBearerAuth('jwt')
+  @ApiOkResponse({
+    type: String,
+    example: {
+      data: {
+        message: 'OTP sent successfully',
+      },
+    },
+  })
+  async resendOTP(@DecodedOptions() decoded: JWTDecoded) {
+    return this.authService.resendOTP(decoded.sub, 'signup', decoded.jti);
+  }
 }

@@ -53,11 +53,12 @@ export class AuthService {
       const u = await this.usersService.createOne(user);
       if (!u) throw new HttpException('Something went wrong', 500);
       const OTP = await this.generateOTP(u.id, 'signup');
+      const jti = await this.createVerificationSession(u.id, 'signup');
       await this.notificationService.sendEmail(
         user.email,
         'Welcome to SwooshPay',
         'Please confirm your email address to continue by entering the following code: ' +
-          OTP.code
+          OTP
       );
       return {
         data: {
@@ -69,7 +70,7 @@ export class AuthService {
               expiresIn: '10m',
               audience: 'verify',
               issuer: 'swooshpay',
-              jwtid: OTP.jti,
+              jwtid: jti,
             }
           ),
         },
@@ -169,8 +170,9 @@ export class AuthService {
       await trx.deleteFrom('otps').where('id', '=', otpId).execute();
 
       await trx
-        .deleteFrom('verification_sessions')
+        .updateTable('verification_sessions')
         .where('id', '=', jwtId)
+        .set({ is_consumed: true })
         .execute();
     });
   }
@@ -179,54 +181,84 @@ export class AuthService {
     return this.usersService.updateOne(userId, { is_confirmed: true });
   }
 
-  private async generateOTP(
-    userId: string,
-    purpose: OtpPurpose
-  ): Promise<{ code: string; jti: string }> {
+  async resendOTP(userId: string, purpose: OtpPurpose, jwtId: string) {
+    // Generaye new OPT
+    const otp = await this.generateOTP(userId, purpose);
+    await this.createVerificationSession(userId, purpose, jwtId);
+    const user = await this.usersService.findOneByAny(userId);
+    if (!user)
+      throw new NotFoundException('User was not found for this request');
+    await this.notificationService.sendEmail(
+      user.email,
+      'Confirm your email address',
+      'Please confirm your email address to continue by entering the following code: ' +
+        otp
+    );
+
+    return {
+      data: {
+        message: 'OTP sent successfully',
+      },
+    };
+  }
+
+  async getVerificationSession(id: string) {
+    return db
+      .selectFrom('verification_sessions')
+      .where('id', '=', id)
+      .selectAll()
+      .executeTakeFirst();
+  }
+
+  private async generateOTP(userId: string, purpose: OtpPurpose) {
     try {
       const code = this.generateUniqueDigitCode();
       const codeHash = createHash(code);
       const expires_at = new Date(Date.now() + 10 * 60_000);
-      const jti = randomUUID();
 
-      await db.transaction().execute(async (trx) => {
-        await trx
-          .insertInto('otps')
-          .values({
-            user_id: userId,
-            purpose,
-            code_hash: codeHash,
-            expires_at,
-            consumed_at: null,
-          })
-          .onConflict((oc) =>
-            oc
-              .columns(['user_id', 'purpose'])
-              .where('consumed_at', 'is', null)
-              .doUpdateSet({
-                code_hash: codeHash,
-                expires_at,
-                consumed_at: null,
-                created_at: sql`NOW()`,
-              })
-          )
-          .execute();
+      const row = await db
+        .insertInto('otps')
+        .values({
+          user_id: userId,
+          purpose,
+          code_hash: codeHash,
+          expires_at,
+          consumed_at: null,
+        })
+        .onConflict((oc) =>
+          oc
+            .columns(['user_id', 'purpose'])
+            .where('consumed_at', 'is', null)
+            .where('expires_at', '>', new Date())
+            .where('attempts', '<', this.MAX_ATTEMPTS)
+            .doUpdateSet({
+              code_hash: codeHash,
+              expires_at,
+              consumed_at: null,
+              created_at: sql`NOW()`,
+            })
+        )
+        .returning((rb) => [
+          rb.ref('id').as('id'),
+          rb.ref('attempts').as('attempts'),
+          rb.ref('expires_at').as('expiresAt'),
+        ])
+        .executeTakeFirst();
 
-        await trx
-          .insertInto('verification_sessions')
-          .values({
-            id: jti,
-            user_id: userId,
-            purpose,
-            expires_at,
-          })
-          .executeTakeFirst();
-      });
+      if (!row) {
+        throw new BadRequestException(
+          'OTP is expired or not found; please try again!'
+        );
+      }
 
-      return {
-        code,
-        jti,
-      };
+      if (row.attempts >= this.MAX_ATTEMPTS) {
+        throw new HttpException(
+          'Too many attempts. Please try again later.',
+          429
+        );
+      }
+
+      return code;
     } catch (error) {
       this.logger.error(error);
       // fallback for unexpected error types
@@ -234,6 +266,55 @@ export class AuthService {
         'Something went wrong while creating account, please try again later'
       );
     }
+  }
+
+  private async createVerificationSession(
+    userId: string,
+    purpose: OtpPurpose,
+    jti?: string
+  ) {
+    const expiresAt = new Date(Date.now() + 10 * 60_000);
+    const id = jti || randomUUID();
+
+    const row = await db
+      .insertInto('verification_sessions')
+      .values({
+        id,
+        user_id: userId,
+        purpose,
+        expires_at: expiresAt,
+      })
+      .onConflict((oc) =>
+        oc
+          .columns(['id'])
+          .where('expires_at', '>', new Date())
+          .where('attempts', '<', this.MAX_ATTEMPTS)
+          .where('is_consumed', '=', false)
+          .doUpdateSet((eb) => ({
+            attempts: eb('verification_sessions.attempts', '+', 1),
+            expires_at: expiresAt,
+          }))
+      )
+      .returning((rb) => [
+        rb.ref('id').as('id'),
+        rb.ref('attempts').as('attempts'),
+        rb.ref('expires_at').as('expiresAt'),
+      ])
+      .executeTakeFirst();
+
+    if (!row) {
+      throw new BadRequestException(
+        'Verification session is expired or not found; please try again!'
+      );
+    }
+
+    if (row.attempts >= this.MAX_ATTEMPTS) {
+      throw new HttpException(
+        'Too many attempts. Please try again later.',
+        429
+      );
+    }
+    return id;
   }
 
   private generateUniqueDigitCode(length = 6): string {

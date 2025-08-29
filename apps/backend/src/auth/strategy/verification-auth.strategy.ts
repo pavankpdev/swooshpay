@@ -1,12 +1,16 @@
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { env } from '../../env';
+import { JWTDecoded } from '../../types/common';
+import { AuthService } from '../auth.service';
+import { BadRequestException, Injectable } from '@nestjs/common';
 
+@Injectable()
 export class VerifyJWTStrategy extends PassportStrategy(
   Strategy,
   'jwt-verify'
 ) {
-  constructor() {
+  constructor(private authService: AuthService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -16,8 +20,12 @@ export class VerifyJWTStrategy extends PassportStrategy(
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async validate(payload: any) {
+  async validate(payload: JWTDecoded) {
+    const jti = await this.authService.getVerificationSession(payload.jti);
+    if (!jti || jti.is_consumed)
+      throw new BadRequestException('OTP already used');
+    if (jti.expires_at < new Date())
+      throw new BadRequestException('OTP expired');
     return payload;
   }
 }

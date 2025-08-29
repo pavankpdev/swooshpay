@@ -21,7 +21,11 @@ export class UsersService {
       .selectFrom('users')
       .selectAll()
       .where((eb) =>
-        eb.or([eb('username', '=', value), eb('email', '=', value)])
+        eb.or([
+          eb('id', '=', value),
+          eb('username', '=', value),
+          eb('email', '=', value),
+        ])
       )
       .limit(1)
       .executeTakeFirst();
