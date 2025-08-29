@@ -57,8 +57,7 @@ export class AuthService {
       await this.notificationService.sendEmail(
         user.email,
         'Welcome to SwooshPay',
-        'Please confirm your email address to continue by entering the following code: ' +
-          OTP
+        `Please confirm your email address to continue by entering the following code: ${OTP}, you can also use the following link to open the verification page: frontend_url/${jti}`
       );
       return {
         data: {
@@ -208,6 +207,29 @@ export class AuthService {
       .where('id', '=', id)
       .selectAll()
       .executeTakeFirst();
+  }
+
+  async buildNewVerificationSession(sessionId: string) {
+    const session = await this.getVerificationSession(sessionId);
+    if (!session || session.is_consumed)
+      throw new BadRequestException('OTP already used');
+    if (session.expires_at < new Date())
+      throw new BadRequestException('OTP expired');
+
+    const accessToken = this.jwtService.sign(
+      { sub: session.user_id, scope: ['verify_email'] },
+      {
+        expiresIn: '10m',
+        audience: 'verify',
+        issuer: 'swooshpay',
+        jwtid: sessionId,
+      }
+    );
+    return {
+      data: {
+        accessToken,
+      },
+    };
   }
 
   private async generateOTP(userId: string, purpose: OtpPurpose) {

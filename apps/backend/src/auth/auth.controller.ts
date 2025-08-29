@@ -2,6 +2,8 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
+  Param,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -92,5 +94,18 @@ export class AuthController {
   })
   async resendOTP(@DecodedOptions() decoded: JWTDecoded) {
     return this.authService.resendOTP(decoded.sub, 'signup', decoded.jti);
+  }
+
+  @Get('/session/verify/:id')
+  @ApiOkResponse({
+    type: String,
+    example: {
+      data: {
+        accessToken: 'accesstoken',
+      },
+    },
+  })
+  async getVerificationSession(@Param('id') id: string) {
+    return this.authService.buildNewVerificationSession(id);
   }
 }
