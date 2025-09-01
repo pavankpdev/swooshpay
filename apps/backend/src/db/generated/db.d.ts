@@ -9,7 +9,7 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
   ? ColumnType<S, I | undefined, U>
   : ColumnType<T, T | undefined, T>;
 
-export type OtpPurpose = 'reset_password' | 'signup';
+export type OtpPurpose = 'forgot_password' | 'reset_password' | 'signup';
 
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
