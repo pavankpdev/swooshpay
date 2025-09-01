@@ -13,11 +13,12 @@ import { JwtService } from '@nestjs/jwt';
 import { RegisterDto } from './auth.dto';
 import { DatabaseError } from 'pg';
 import { NotificationService } from '../notification/notification.service';
-import { comparePassword, createHash } from '../utils/crypto';
+import { comparePassword, createHash, hashPassword } from '../utils/crypto';
 import { db } from '../db/connection';
 import { sql } from 'kysely';
 import { OtpPurpose } from '../db/generated/db';
 import { randomUUID } from 'crypto';
+import { TEN_MINUTES } from '../utils/constants';
 
 @Injectable()
 export class AuthService {
@@ -95,6 +96,65 @@ export class AuthService {
         'Something went wrong while creating account, please try again later'
       );
     }
+  }
+
+  async forgotPassword(email: string) {
+    try {
+      const user = await this.usersService.findOneByAny(email);
+      if (!user) throw new NotFoundException('User not found');
+      const OTP = await this.generateOTP(user.id, 'forgot_password');
+      const jti = await this.createVerificationSession(
+        user.id,
+        'forgot_password'
+      );
+      await this.notificationService.sendEmail(
+        user.email,
+        'Reset your password on SwooshPay',
+        `Please use this code to reset your password: ${OTP}, you can also use the following link to open the verification page: frontend_url/${jti}`
+      );
+      return {
+        data: {
+          message: 'Please check your email for the OTP',
+          accessToken: this.jwtService.sign(
+            { sub: user.id, scope: ['forgot_password'] },
+            {
+              expiresIn: '10m',
+              audience: 'verify',
+              issuer: 'swooshpay',
+              jwtid: jti,
+            }
+          ),
+        },
+      };
+    } catch (error) {
+      this.logger.error(error);
+
+      if (error instanceof DatabaseError) {
+        if (error.code === '23505') {
+          const msg = (error.constraint || '').toLowerCase();
+          if (msg.includes('uniq_verification_sessions_user_id_purpose')) {
+            throw new ConflictException(
+              'Seems like you have already requested for a reset password link'
+            );
+          }
+        }
+      }
+
+      // fallback for unexpected error types
+      throw new InternalServerErrorException(
+        'Something went wrong while sending reset password email, please try again later'
+      );
+    }
+  }
+
+  async resetPassword(userId: string, newPassword: string) {
+    const user = await this.usersService.findOneById(userId);
+    if (!user)
+      throw new NotFoundException('User was not found for this request');
+
+    const hashedPassword = await hashPassword(newPassword);
+    await this.usersService.updateOne(userId, { password: hashedPassword });
+    return true;
   }
 
   async verifyOTP(userId: string, code: string, purpose: OtpPurpose) {
@@ -176,15 +236,30 @@ export class AuthService {
     });
   }
 
+  async getResetPasswordVerifiedSession(userId: string) {
+    const session = await this.createVerificationSession(
+      userId,
+      'reset_password'
+    );
+    return this.jwtService.sign(
+      { sub: userId, scope: ['reset_password'] },
+      {
+        expiresIn: '10m',
+        audience: 'verify',
+        issuer: 'swooshpay',
+        jwtid: session,
+      }
+    );
+  }
+
   async confirmUser(userId: string) {
     return this.usersService.updateOne(userId, { is_confirmed: true });
   }
 
   async resendOTP(userId: string, purpose: OtpPurpose, jwtId: string) {
-    // Generaye new OPT
     const otp = await this.generateOTP(userId, purpose);
     await this.createVerificationSession(userId, purpose, jwtId);
-    const user = await this.usersService.findOneByAny(userId);
+    const user = await this.usersService.findOneById(userId);
     if (!user)
       throw new NotFoundException('User was not found for this request');
     await this.notificationService.sendEmail(
@@ -213,8 +288,6 @@ export class AuthService {
     const session = await this.getVerificationSession(sessionId);
     if (!session || session.is_consumed)
       throw new BadRequestException('OTP already used');
-    if (session.expires_at < new Date())
-      throw new BadRequestException('OTP expired');
 
     const accessToken = this.jwtService.sign(
       { sub: session.user_id, scope: ['verify_email'] },
@@ -236,7 +309,7 @@ export class AuthService {
     try {
       const code = this.generateUniqueDigitCode();
       const codeHash = createHash(code);
-      const expires_at = new Date(Date.now() + 10 * 60_000);
+      const expires_at = new Date(Date.now() + TEN_MINUTES);
 
       const row = await db
         .insertInto('otps')
@@ -295,7 +368,7 @@ export class AuthService {
     purpose: OtpPurpose,
     jti?: string
   ) {
-    const expiresAt = new Date(Date.now() + 10 * 60_000);
+    const expiresAt = new Date(Date.now() + TEN_MINUTES);
     const id = jti || randomUUID();
 
     const row = await db
@@ -308,8 +381,7 @@ export class AuthService {
       })
       .onConflict((oc) =>
         oc
-          .columns(['id'])
-          .where('expires_at', '>', new Date())
+          .columns(['user_id', 'purpose'])
           .where('attempts', '<', this.MAX_ATTEMPTS)
           .where('is_consumed', '=', false)
           .doUpdateSet((eb) => ({

@@ -26,3 +26,13 @@ export class ConfirmUserDto {
   @ApiProperty()
   otp!: string;
 }
+
+export class ForgotPwdUserDto {
+  @ApiProperty()
+  email!: string;
+}
+
+export class ResetPwdUserDto {
+  @ApiProperty()
+  newPassword!: string;
+}

@@ -16,16 +16,21 @@ export class UsersService {
       .executeTakeFirst();
   }
 
+  async findOneById(id: string) {
+    return db
+      .selectFrom('users')
+      .selectAll()
+      .where('id', '=', id)
+      .limit(1)
+      .executeTakeFirst();
+  }
+
   async findOneByAny(value: string) {
     return db
       .selectFrom('users')
       .selectAll()
       .where((eb) =>
-        eb.or([
-          eb('id', '=', value),
-          eb('username', '=', value),
-          eb('email', '=', value),
-        ])
+        eb.or([eb('username', '=', value), eb('email', '=', value)])
       )
       .limit(1)
       .executeTakeFirst();

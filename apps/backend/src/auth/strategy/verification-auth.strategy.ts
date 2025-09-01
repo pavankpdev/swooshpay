@@ -23,9 +23,10 @@ export class VerifyJWTStrategy extends PassportStrategy(
   async validate(payload: JWTDecoded) {
     const jti = await this.authService.getVerificationSession(payload.jti);
     if (!jti || jti.is_consumed)
-      throw new BadRequestException('OTP already used');
-    if (jti.expires_at < new Date())
-      throw new BadRequestException('OTP expired');
-    return payload;
+      throw new BadRequestException('OTP expired or already used');
+    return {
+      ...payload,
+      purpose: jti.purpose,
+    };
   }
 }
